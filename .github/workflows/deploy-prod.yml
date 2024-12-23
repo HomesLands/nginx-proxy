@@ -1,0 +1,37 @@
+name: Deploy-prod
+
+on:
+  push:
+    tags:
+      - "v*" # This triggers the workflow on any tag
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Deploy with Docker Compose
+        env:
+          REMOTE_HOST_PROD: ${{ secrets.REMOTE_HOST_PROD }}
+          REMOTE_USER_PROD: ${{ secrets.REMOTE_USER_PROD }}
+          SSH_PORT_PROD: ${{ secrets.SSH_PORT_PROD }}
+          SSH_PRIVATE_KEY_PROD: ${{ secrets.SSH_PRIVATE_KEY_PROD }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY_PROD" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p $SSH_PORT_PROD $REMOTE_HOST_PROD >> ~/.ssh/known_hosts
+          export DOCKER_HOST="ssh://$REMOTE_USER_PROD@$REMOTE_HOST_PROD:$SSH_PORT_PROD"
+          export DOCKER_BUILDKIT=1
+
+          docker ps -a
+          docker compose -f .compose/docker-compose.yaml down
+          docker compose -f .compose/docker-compose.yaml up -d --build
+          docker image prune -f  # clean up none image after built
+          docker volume prune -f # clean up none volumn after built
